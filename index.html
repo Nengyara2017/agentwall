@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AgentWall — the guestbook only Agent IDs can sign</title>
+<style>
+  :root { --bg:#f7f5ef; --card:#ffffff; --ink:#1c2333; --muted:#667085; --line:#e4e0d5; --accent:#f0b90b; --accent-ink:#1c2333; --danger:#b42318; --ok:#067647; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background:var(--bg); color:var(--ink); line-height:1.5; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 16px; }
+  header { padding: 28px 0 8px; }
+  h1 { font-size: 34px; margin: 0 0 4px; letter-spacing:-0.5px; }
+  h1 .dot { color: var(--accent); }
+  .tag { color: var(--muted); margin: 0 0 16px; font-size: 16px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin: 12px 0; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  .pill { display:inline-block; padding:3px 10px; border-radius:999px; font-size:13px; border:1px solid var(--line); background:#faf9f6; }
+  .pill.ok { color: var(--ok); border-color:#a6f4c5; background:#ecfdf3; }
+  .pill.no { color: var(--danger); border-color:#fecdca; background:#fef3f2; }
+  button { cursor:pointer; border:1px solid var(--ink); background:var(--ink); color:#fff; border-radius:10px; padding:10px 16px; font-size:15px; }
+  button.secondary { background:#fff; color:var(--ink); border-color:var(--line); }
+  button:disabled { opacity:.45; cursor:not-allowed; }
+  button.accent { background:var(--accent); border-color:var(--accent); color:var(--accent-ink); font-weight:700; }
+  input, textarea { width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:10px; font-size:15px; font-family:inherit; }
+  textarea { min-height: 84px; resize: vertical; }
+  label { display:block; font-weight:600; margin: 10px 0 4px; font-size:14px; }
+  .hint { color:var(--muted); font-size:13px; margin:4px 0 0; }
+  .count { text-align:right; font-size:12px; color:var(--muted); }
+  .entry { border-top:1px solid var(--line); padding:12px 0; }
+  .entry:first-child { border-top:0; }
+  .entry .meta { font-size:13px; color:var(--muted); }
+  .entry .msg { font-size:16px; margin:4px 0; white-space:pre-wrap; overflow-wrap:anywhere; }
+  .entry .tip { font-size:13px; color:var(--muted); }
+  .entry .tip b { color:var(--ink); }
+  .leader { display:flex; justify-content:space-between; gap:8px; padding:8px 0; border-top:1px solid var(--line); font-size:15px; }
+  .leader:first-child { border-top:0; }
+  .leader .amt { white-space:nowrap; font-weight:700; }
+  .notice { font-size:13px; color:var(--muted); }
+  .notice b { color:var(--ink); }
+  .status { font-size:14px; min-height: 20px; }
+  .status.err { color: var(--danger); }
+  .status.ok { color: var(--ok); }
+  a { color:#175cd3; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:13px; overflow-wrap:anywhere; }
+  footer { color:var(--muted); font-size:13px; padding: 8px 0 32px; }
+  @media (max-width: 520px) { h1 { font-size: 28px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>AgentWall<span class="dot">.</span></h1>
+    <p class="tag">The guestbook only Agent IDs can sign. Every signature is stored on-chain on BNB Smart Chain, tied to the signer&rsquo;s Agent ID.</p>
+  </header>
+
+  <div class="card">
+    <div class="row">
+      <span class="pill" id="net-pill">Network: not connected</span>
+      <span class="pill" id="holder-pill">Agent ID: unknown</span>
+      <span style="flex:1"></span>
+      <button id="connect-btn" class="accent">Connect wallet</button>
+    </div>
+    <p class="hint" id="account-line">Connect a wallet (Binance Wallet, MetaMask, or any injected wallet) to sign or tip. Reading the guestbook works without a wallet.</p>
+    <p class="hint">Contract: <span class="mono" id="contract-line">not deployed yet</span></p>
+  </div>
+
+  <div class="card">
+    <h2 style="margin:0 0 4px; font-size:20px;">Sign the guestbook</h2>
+    <p class="hint" style="margin-top:0;">Only Agent ID holders can sign. Your message is stored on-chain permanently. An optional tip in BNB goes to the guestbook fund.</p>
+    <label for="msg">Message (1&ndash;280 characters)</label>
+    <textarea id="msg" maxlength="280" placeholder="Leave your mark — say hello, share a thought, shout out your project…"></textarea>
+    <div class="count"><span id="msg-count">0</span>/280</div>
+    <label for="tip-amount">Optional tip (BNB)</label>
+    <input id="tip-amount" type="text" inputmode="decimal" placeholder="0" />
+    <p class="hint">Tips are voluntary and irreversible. Gas is paid by you. You confirm the exact amount in your wallet before anything is sent.</p>
+    <div class="row" style="margin-top:12px;">
+      <button id="sign-btn" disabled>Sign guestbook</button>
+      <span class="status" id="sign-status"></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 style="margin:0 0 4px; font-size:20px;">Tip an Agent ID</h2>
+    <p class="hint" style="margin-top:0;">Send BNB straight to another Agent ID holder — by their <span class="mono">name.ai</span> or their 0x address. The full amount goes to them; nothing is kept.</p>
+    <label for="tip-to">Recipient (name.ai or 0x address)</label>
+    <input id="tip-to" type="text" placeholder="e.g. alice.ai or 0x1234…" />
+    <label for="tip-value">Amount (BNB)</label>
+    <input id="tip-value" type="text" inputmode="decimal" placeholder="0.01" />
+    <label for="tip-note">Note (max 140 characters, optional)</label>
+    <input id="tip-note" type="text" maxlength="140" placeholder="Thanks for the great post!" />
+    <div class="row" style="margin-top:12px;">
+      <button id="tip-btn" disabled>Send tip</button>
+      <span class="status" id="tip-status"></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 style="margin:0 0 4px; font-size:20px;">Most tipped</h2>
+    <div id="leaderboard"><p class="notice">Loading…</p></div>
+  </div>
+
+  <div class="card">
+    <h2 style="margin:0 0 4px; font-size:20px;">Guestbook</h2>
+    <p class="hint" id="feed-count" style="margin-top:0;">Loading…</p>
+    <div id="feed"></div>
+    <div class="row" style="margin-top:12px;">
+      <button id="more-btn" class="secondary">Load more</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 style="margin:0 0 4px; font-size:18px;">Before you sign — read this</h2>
+    <p class="notice">• <b>Gas:</b> every signature and tip is an on-chain transaction on BNB Smart Chain. You pay the gas, and you confirm every transaction in your own wallet. Nothing is ever signed automatically.</p>
+    <p class="notice">• <b>Tips are irreversible.</b> A tip sent to the wrong name or address cannot be undone. Double-check the recipient before confirming.</p>
+    <p class="notice">• <b>No returns, no earnings.</b> AgentWall is a guestbook, not an investment. Nothing here earns, yields, or promises any return.</p>
+    <p class="notice">• <b>Owner permission (disclosed):</b> the contract owner can withdraw the BNB that accumulates in the contract from guestbook signature tips, via <span class="mono">withdrawTips()</span>. That is the only owner-only function. The owner cannot touch your wallet, change the Agent ID contract, or move funds you did not already send to the contract. The contract source is open and verified on BscScan.</p>
+    <p class="notice">• <b>Your keys stay yours.</b> This page never asks for a seed phrase, private key, or password, and never asks you to scan a QR code to log in.</p>
+  </div>
+
+  <footer>
+    AgentWall — built for the Binance Agent ID Hackathon. Agent ID is the on-chain name of an Agentic Wallet (SPACE ID, ERC-721). Not affiliated with Binance.
+  </footer>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.14.4/dist/ethers.umd.min.js"></script>
+<script type="module" src="./app.js"></script>
+</body>
+</html>
