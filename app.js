@@ -14,6 +14,10 @@ const CONFIG = {
   BSC_RPC: "https://bsc-dataseed.binance.org",
   BSCSCAN_TX: "https://bscscan.com/tx/",
   PAGE_SIZE: 20,
+  // WalletConnect Cloud project "AgentWall" (Reown) — used for the
+  // WalletConnect button so mobile wallets and the Binance Agentic Wallet
+  // can connect by scanning a QR code.
+  WALLETCONNECT_PROJECT_ID: "e099eb83cb3660b569b7be7e53567650",
 };
 
 const WALL_ABI = [
@@ -32,6 +36,7 @@ const AGENT_ID_ABI = ["function balanceOf(address owner) view returns (uint256)"
 // ---- state ----
 let readProvider = null; // public RPC (reads work without a wallet)
 let walletProvider = null; // injected wallet (writes)
+let wcProvider = null; // WalletConnect provider (writes), or null
 let signer = null;
 let userAddress = null;
 let userHoldsAgentId = false;
@@ -156,66 +161,112 @@ function updateButtons() {
   }
 }
 
+// Shared setup after a provider has accounts: resolves the signer,
+// makes sure the wallet is on BNB Smart Chain, then updates the UI.
+async function finishConnect(ethersProvider, eip1193) {
+  const accounts = await ethersProvider.send("eth_requestAccounts", []);
+  userAddress = ethers.getAddress(accounts[0]);
+  signer = await ethersProvider.getSigner();
+
+  const net = await ethersProvider.getNetwork();
+  const pill = $("net-pill");
+  if (Number(net.chainId) !== CONFIG.BSC_CHAIN_ID) {
+    pill.textContent = "Network: wrong chain — switch to BNB Smart Chain";
+    pill.className = "pill no";
+    try {
+      await eip1193.request({
+        method: "wallet_switchEthereumChain",
+        params: [{ chainId: "0x38" }], // 56
+      });
+      pill.textContent = "Network: BNB Smart Chain ✓";
+      pill.className = "pill ok";
+    } catch (switchErr) {
+      if (switchErr && switchErr.code === 4902) {
+        try {
+          await eip1193.request({
+            method: "wallet_addEthereumChain",
+            params: [
+              {
+                chainId: "0x38",
+                chainName: "BNB Smart Chain",
+                nativeCurrency: { name: "BNB", symbol: "BNB", decimals: 18 },
+                rpcUrls: [CONFIG.BSC_RPC],
+                blockExplorerUrls: ["https://bscscan.com"],
+              },
+            ],
+          });
+          pill.textContent = "Network: BNB Smart Chain ✓";
+          pill.className = "pill ok";
+        } catch (e) {
+          setStatus($("sign-status"), "Please switch your wallet to BNB Smart Chain (chain 56).", "err");
+        }
+      } else {
+        setStatus($("sign-status"), "Please switch your wallet to BNB Smart Chain (chain 56).", "err");
+      }
+    }
+  } else {
+    pill.textContent = "Network: BNB Smart Chain ✓";
+    pill.className = "pill ok";
+  }
+
+  $("account-line").textContent = "Connected: " + userAddress;
+  $("connect-btn").textContent = "Connected ✓";
+  $("wc-btn").textContent = "Connected ✓";
+  await refreshHolderStatus();
+  eip1193.on?.("accountsChanged", () => window.location.reload());
+  eip1193.on?.("chainChanged", () => window.location.reload());
+  eip1193.on?.("disconnect", () => window.location.reload());
+}
+
 // ---- wallet connect ----
 async function connectWallet() {
   if (!window.ethereum) {
-    setStatus($("sign-status"), "No wallet found. Install Binance Wallet or MetaMask.", "err");
+    setStatus($("sign-status"), "No wallet found. Install Binance Wallet or MetaMask, or use WalletConnect.", "err");
     return;
   }
   try {
     walletProvider = new ethers.BrowserProvider(window.ethereum);
-    const accounts = await walletProvider.send("eth_requestAccounts", []);
-    userAddress = ethers.getAddress(accounts[0]);
-    signer = await walletProvider.getSigner();
-
-    const net = await walletProvider.getNetwork();
-    const pill = $("net-pill");
-    if (Number(net.chainId) !== CONFIG.BSC_CHAIN_ID) {
-      pill.textContent = "Network: wrong chain — switch to BNB Smart Chain";
-      pill.className = "pill no";
-      try {
-        await window.ethereum.request({
-          method: "wallet_switchEthereumChain",
-          params: [{ chainId: "0x38" }], // 56
-        });
-        pill.textContent = "Network: BNB Smart Chain ✓";
-        pill.className = "pill ok";
-      } catch (switchErr) {
-        if (switchErr && switchErr.code === 4902) {
-          try {
-            await window.ethereum.request({
-              method: "wallet_addEthereumChain",
-              params: [
-                {
-                  chainId: "0x38",
-                  chainName: "BNB Smart Chain",
-                  nativeCurrency: { name: "BNB", symbol: "BNB", decimals: 18 },
-                  rpcUrls: [CONFIG.BSC_RPC],
-                  blockExplorerUrls: ["https://bscscan.com"],
-                },
-              ],
-            });
-            pill.textContent = "Network: BNB Smart Chain ✓";
-            pill.className = "pill ok";
-          } catch (e) {
-            setStatus($("sign-status"), "Please switch your wallet to BNB Smart Chain (chain 56).", "err");
-          }
-        } else {
-          setStatus($("sign-status"), "Please switch your wallet to BNB Smart Chain (chain 56).", "err");
-        }
-      }
-    } else {
-      pill.textContent = "Network: BNB Smart Chain ✓";
-      pill.className = "pill ok";
-    }
-
-    $("account-line").textContent = "Connected: " + userAddress;
-    $("connect-btn").textContent = "Connected ✓";
-    await refreshHolderStatus();
-    window.ethereum.on?.("accountsChanged", () => window.location.reload());
-    window.ethereum.on?.("chainChanged", () => window.location.reload());
+    await finishConnect(walletProvider, window.ethereum);
   } catch (e) {
     setStatus($("sign-status"), "Connection failed: " + (e?.message || e), "err");
+  }
+}
+
+// WalletConnect — for mobile wallets and the Binance Agentic Wallet.
+// Shows a QR code the user scans with their wallet app.
+// The UMD build exposes the class at window["@walletconnect/ethereum-provider"].
+function getWCProviderClass() {
+  const ns = typeof window !== "undefined" ? window["@walletconnect/ethereum-provider"] : null;
+  if (ns && ns.EthereumProvider) return ns.EthereumProvider;
+  if (typeof EthereumProvider !== "undefined") return EthereumProvider;
+  return null;
+}
+
+async function connectWalletConnect() {
+  const WCProvider = getWCProviderClass();
+  if (!WCProvider) {
+    setStatus($("sign-status"), "WalletConnect failed to load. Check your connection and reload the page.", "err");
+    return;
+  }
+  try {
+    setStatus($("sign-status"), "Opening WalletConnect — scan the QR code with your wallet…");
+    wcProvider = await WCProvider.init({
+      projectId: CONFIG.WALLETCONNECT_PROJECT_ID,
+      chains: [CONFIG.BSC_CHAIN_ID],
+      showQrModal: true,
+      metadata: {
+        name: "AgentWall",
+        description: "The guestbook only Agent IDs can sign.",
+        url: "https://nengyara2017.github.io/agentwall/",
+        icons: ["https://nengyara2017.github.io/agentwall/favicon.ico"],
+      },
+    });
+    // connect() opens the QR modal; it resolves once the wallet approves.
+    await wcProvider.connect();
+    walletProvider = new ethers.BrowserProvider(wcProvider);
+    await finishConnect(walletProvider, wcProvider);
+  } catch (e) {
+    setStatus($("sign-status"), "WalletConnect failed: " + (e?.message || e), "err");
   }
 }
 
@@ -389,6 +440,7 @@ async function tipAgent() {
 
 // ---- boot ----
 $("connect-btn").addEventListener("click", connectWallet);
+$("wc-btn").addEventListener("click", connectWalletConnect);
 $("sign-btn").addEventListener("click", signGuestbook);
 $("tip-btn").addEventListener("click", tipAgent);
 $("more-btn").addEventListener("click", () => loadFeed(false));

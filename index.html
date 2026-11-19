@@ -60,8 +60,9 @@
       <span class="pill" id="holder-pill">Agent ID: unknown</span>
       <span style="flex:1"></span>
       <button id="connect-btn" class="accent">Connect wallet</button>
+      <button id="wc-btn" class="secondary">WalletConnect</button>
     </div>
-    <p class="hint" id="account-line">Connect a wallet (Binance Wallet, MetaMask, or any injected wallet) to sign or tip. Reading the guestbook works without a wallet.</p>
+    <p class="hint" id="account-line">Connect a wallet (Binance Wallet, MetaMask, or any injected wallet) to sign or tip. Use WalletConnect to connect a mobile wallet or the Binance Agentic Wallet — scan the QR code it shows. Reading the guestbook works without a wallet.</p>
     <p class="hint">Contract: <span class="mono" id="contract-line">not deployed yet</span></p>
   </div>
 
@@ -124,6 +125,8 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.14.4/dist/ethers.umd.min.js"></script>
+<script>window.process = window.process || { env: {} };</script>
+<script src="https://cdn.jsdelivr.net/npm/@walletconnect/ethereum-provider@2.17.5/dist/index.umd.js"></script>
 <script type="module" src="./app.js"></script>
 </body>
 </html>
