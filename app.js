@@ -14,10 +14,6 @@ const CONFIG = {
   BSC_RPC: "https://bsc-dataseed.binance.org",
   BSCSCAN_TX: "https://bscscan.com/tx/",
   PAGE_SIZE: 20,
-  // WalletConnect Cloud project "AgentWall" (Reown) — used for the
-  // WalletConnect button so mobile wallets and the Binance Agentic Wallet
-  // can connect by scanning a QR code.
-  WALLETCONNECT_PROJECT_ID: "e099eb83cb3660b569b7be7e53567650",
 };
 
 const WALL_ABI = [
@@ -36,7 +32,6 @@ const AGENT_ID_ABI = ["function balanceOf(address owner) view returns (uint256)"
 // ---- state ----
 let readProvider = null; // public RPC (reads work without a wallet)
 let walletProvider = null; // injected wallet (writes)
-let wcProvider = null; // WalletConnect provider (writes), or null
 let signer = null;
 let userAddress = null;
 let userHoldsAgentId = false;
@@ -211,7 +206,6 @@ async function finishConnect(ethersProvider, eip1193) {
 
   $("account-line").textContent = "Connected: " + userAddress;
   $("connect-btn").textContent = "Connected ✓";
-  $("wc-btn").textContent = "Connected ✓";
   await refreshHolderStatus();
   eip1193.on?.("accountsChanged", () => window.location.reload());
   eip1193.on?.("chainChanged", () => window.location.reload());
@@ -221,7 +215,7 @@ async function finishConnect(ethersProvider, eip1193) {
 // ---- wallet connect ----
 async function connectWallet() {
   if (!window.ethereum) {
-    setStatus($("sign-status"), "No wallet found. Install Binance Wallet or MetaMask, or use WalletConnect.", "err");
+    setStatus($("sign-status"), "No wallet found. Install Binance Wallet or MetaMask.", "err");
     return;
   }
   try {
@@ -229,44 +223,6 @@ async function connectWallet() {
     await finishConnect(walletProvider, window.ethereum);
   } catch (e) {
     setStatus($("sign-status"), "Connection failed: " + (e?.message || e), "err");
-  }
-}
-
-// WalletConnect — for mobile wallets and the Binance Agentic Wallet.
-// Shows a QR code the user scans with their wallet app.
-// The UMD build exposes the class at window["@walletconnect/ethereum-provider"].
-function getWCProviderClass() {
-  const ns = typeof window !== "undefined" ? window["@walletconnect/ethereum-provider"] : null;
-  if (ns && ns.EthereumProvider) return ns.EthereumProvider;
-  if (typeof EthereumProvider !== "undefined") return EthereumProvider;
-  return null;
-}
-
-async function connectWalletConnect() {
-  const WCProvider = getWCProviderClass();
-  if (!WCProvider) {
-    setStatus($("sign-status"), "WalletConnect failed to load. Check your connection and reload the page.", "err");
-    return;
-  }
-  try {
-    setStatus($("sign-status"), "Opening WalletConnect — scan the QR code with your wallet…");
-    wcProvider = await WCProvider.init({
-      projectId: CONFIG.WALLETCONNECT_PROJECT_ID,
-      chains: [CONFIG.BSC_CHAIN_ID],
-      showQrModal: true,
-      metadata: {
-        name: "AgentWall",
-        description: "The guestbook only Agent IDs can sign.",
-        url: "https://nengyara2017.github.io/agentwall/",
-        icons: ["https://nengyara2017.github.io/agentwall/favicon.ico"],
-      },
-    });
-    // connect() opens the QR modal; it resolves once the wallet approves.
-    await wcProvider.connect();
-    walletProvider = new ethers.BrowserProvider(wcProvider);
-    await finishConnect(walletProvider, wcProvider);
-  } catch (e) {
-    setStatus($("sign-status"), "WalletConnect failed: " + (e?.message || e), "err");
   }
 }
 
@@ -440,7 +396,6 @@ async function tipAgent() {
 
 // ---- boot ----
 $("connect-btn").addEventListener("click", connectWallet);
-$("wc-btn").addEventListener("click", connectWalletConnect);
 $("sign-btn").addEventListener("click", signGuestbook);
 $("tip-btn").addEventListener("click", tipAgent);
 $("more-btn").addEventListener("click", () => loadFeed(false));
